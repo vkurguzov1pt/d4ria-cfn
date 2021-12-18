@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ---
+Resources:
+  ApplicationLoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow all incoming http/https traffic for LoadBalancer"
+      VpcId: !ImportValue VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: Application LoadBalancer Security Group
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      IpAddressType: ipv4
+      Name: ECS-loadbalancer
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref ApplicationLoadBalancerSecurityGroup
+      Subnets: 
+      - !ImportValue PublicSubnet1
+      - !ImportValue PublicSubnet2
+  
+  ApplicationLoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: ip
+      Name: ECS-Target-Group
+      Port: 80
+      Protocol: HTTP
+      TargetGroupAttributes: 
+        - 
+          Key: deregistration_delay.timeout_seconds
+          Value: 30
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      IpAddressType: ipv4
+      Matcher: 
+        HttpCode: 200-299
+      VpcId: !ImportValue VPC
+      Tags:
+        - Key: Name
+          Value: ECS Target Group
+
+  HttpAplicationLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions: 
+        -
+          Order: 1
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: 443
+            Host: "#{host}"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: "HTTP_301"
+          Type: redirect
+  
+  HttpSAplicationLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - 
+          CertificateArn:
+      DefaultActions: 
+        -
+          Order: 1
+          ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref ApplicationLoadBalancerTargetGroup
+          Type: forward
